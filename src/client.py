@@ -6,7 +6,7 @@ import keyboard # For PTT
 import argparse
 import threading
 
-from .constants import (
+from constants import (
     DEFAULT_SERVER_PORT,
     AUDIO_PORT_OFFSET,
     SAMPLE_RATE,
@@ -14,7 +14,7 @@ from .constants import (
     CHUNK_SIZE,
     PTT_KEY
 )
-from .audio_utils import encode_audio, decode_audio
+from audio_utils import encode_audio, decode_audio
 
 # Global state
 is_ptt_active = False

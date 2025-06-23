@@ -1,6 +1,6 @@
 import asyncio
 import socket
-from constants import DEFAULT_SERVER_IP, DEFAULT_SERVER_PORT, AUDIO_PORT_OFFSET
+from .constants import DEFAULT_SERVER_IP, DEFAULT_SERVER_PORT, AUDIO_PORT_OFFSET
 
 # Using a set for clients for efficient add/remove operations.
 # Stores (writer, address) tuples for TCP control connections

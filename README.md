@@ -34,18 +34,20 @@ Initial project structure has been set up. The next step is to implement the bas
     ```
 
 2.  **Run the server:**
-    Open a terminal in the root directory of the project and run:
+    Open a terminal in the **root directory** of the project. To ensure Python correctly handles the project's package structure, run the server as a module:
     ```bash
     python -m src.server
     ```
     The server will print the IP and port it's listening on.
+    *(Note: Running `python src/server.py` directly will result in an `ImportError` due to how Python handles packages.)*
 
 3.  **Run the client:**
-    Open another terminal in the root directory of the project and run:
+    Open another terminal in the **root directory** of the project. Similar to the server, run the client as a module:
     ```bash
     python -m src.client <server_ip>
     ```
     Replace `<server_ip>` with the IP address the server is running on (e.g., `192.168.1.5` or `127.0.0.1` if running on the same machine).
+    *(Note: Running `python src/client.py <server_ip>` directly will also cause import errors.)*
     You can optionally specify the server's TCP port using the `-p` or `--port` flag if it's different from the default.
 
     Example:
@@ -69,7 +71,21 @@ Initial project structure has been set up. The next step is to implement the bas
     sudo apt-get install libportaudio2
     ```
     For other systems, please refer to the PortAudio website or your system's package manager.
-*   (Later: Opus library)
+*   **Opus Codec Library** (for `opuslib` Python package): The `opuslib` package is a wrapper around the Opus interactive audio codec library. You need to have the Opus library itself installed on your system.
+    *   **Windows:** Download the Opus DLLs from the official Opus website (opus-codec.org) or other trusted sources. Ensure the DLL (e.g., `opus.dll`) is in your system's PATH or in the same directory as your Python executable. Some `opuslib` wheels might bundle the DLL, but manual installation is often more reliable.
+    *   **Linux (Debian/Ubuntu):**
+        ```bash
+        sudo apt-get update
+        sudo apt-get install libopus0
+        ```
+    *   **Linux (Fedora):**
+        ```bash
+        sudo dnf install opus
+        ```
+    *   **macOS (using Homebrew):**
+        ```bash
+        brew install opus
+        ```
 
 ### Running the server (for development)
 

@@ -16,6 +16,11 @@ const userListUl = document.getElementById('userList');
 const messagesDiv = document.getElementById('messages');
 const messageInput = document.getElementById('messageInput');
 const sendMessageButton = document.getElementById('sendMessageButton');
+const enableVoiceButton = document.getElementById('enableVoiceButton');
+const voiceStatusP = document.getElementById('voice-status');
+const localAudioPlayback = document.getElementById('localAudioPlayback'); // Optional
+const remoteAudioContainer = document.getElementById('remoteAudioContainer');
+
 
 // Admin UI elements
 const newRoomNameInput = document.getElementById('newRoomName');
@@ -32,6 +37,14 @@ let userId = null;
 let currentUsername = '';
 let isAdmin = false;
 let currentRoom = null;
+let localAudioStream = null;
+let peerConnections = {}; // Map peerId to RTCPeerConnection object
+
+const ICE_SERVERS = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' }
+    // Add more STUN/TURN servers if needed
+];
 
 // --- Event Listeners ---
 connectButton.addEventListener('click', () => {
@@ -50,6 +63,40 @@ sendMessageButton.addEventListener('click', sendTextMessage);
 messageInput.addEventListener('keypress', (event) => {
     if (event.key === 'Enter' && !messageInput.disabled) {
         sendTextMessage();
+    }
+});
+
+enableVoiceButton.addEventListener('click', async () => {
+    if (localAudioStream) {
+        console.log("Voice already enabled.");
+        // Could add toggle functionality here later (mute/unmute or disable)
+        return;
+    }
+    try {
+        voiceStatusP.textContent = 'Requesting microphone access...';
+        localAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        voiceStatusP.textContent = 'Microphone access granted!';
+        enableVoiceButton.textContent = 'Voice Enabled';
+        enableVoiceButton.disabled = true;
+
+        console.log("Local audio stream obtained:", localAudioStream);
+
+        // Optional: Play local stream for testing (ensure element exists and is muted)
+        // if (localAudioPlayback) {
+        //     localAudioPlayback.srcObject = localAudioStream;
+        //     localAudioPlayback.play().catch(e => console.error("Error playing local audio:", e));
+        // }
+
+        // TODO: Initiate calls or notify others once mic is enabled
+        // This will be part of createPeerConnection logic in a later step.
+        // For example, after this, we might call a function like:
+        initiateCallsToExistingRoomMembers(); // New function to call
+
+    } catch (error) {
+        console.error('Error accessing microphone:', error);
+        voiceStatusP.textContent = `Error accessing microphone: ${error.name} - ${error.message}`;
+        enableVoiceButton.disabled = false; // Allow retry
+        enableVoiceButton.textContent = 'Enable Voice';
     }
 });
 
@@ -162,6 +209,15 @@ function connectWebSocket(username, adminToken) {
             case 'roomRenamed':
                 handleRoomRenamed(msg);
                 break;
+            case 'webrtcOffer':
+                handleWebRTCOffer(msg);
+                break;
+            case 'webrtcAnswer':
+                handleWebRTCAnswer(msg);
+                break;
+            case 'webrtcIceCandidate':
+                handleWebRTCIceCandidate(msg);
+                break;
             default:
                 console.log('Received unhandled message type:', msg.type);
         }
@@ -174,6 +230,7 @@ function connectWebSocket(username, adminToken) {
         connectionArea.style.display = 'block';
         adminControlsDiv.style.display = 'none';
         socket = null; // Clear the socket object
+    closeAllPeerConnections(); // Clean up WebRTC connections on WebSocket close
     };
 
     socket.onerror = (error) => {
@@ -192,6 +249,71 @@ function sendMessage(messageObject) {
     } else {
         console.error('WebSocket is not connected. Cannot send message.');
         connectionStatusP.textContent = 'Not connected. Please connect first.';
+    }
+}
+
+async function handleWebRTCAnswer(message) {
+    const { senderUserId, answer } = message;
+    console.log(`Received WebRTC answer from ${senderUserId}:`, answer.sdp.substring(0,30) + "...");
+
+    const pc = peerConnections[senderUserId];
+    if (!pc) {
+        console.error(`Received answer from ${senderUserId}, but no peer connection found.`);
+        return;
+    }
+
+    // Check if signaling state is appropriate for setting remote answer
+    // For example, 'have-local-offer' is a common state when expecting an answer.
+    if (pc.signalingState === 'have-local-offer' || pc.signalingState === 'stable') { // Stable if polite peer resets state
+        try {
+            await pc.setRemoteDescription(new RTCSessionDescription(answer));
+            console.log(`Remote description (answer) set for ${senderUserId}. Connection should establish.`);
+        } catch (error) {
+            console.error(`Error setting remote description (answer) from ${senderUserId}:`, error);
+        }
+    } else {
+        console.warn(`Received answer from ${senderUserId}, but signaling state is ${pc.signalingState}. May not be able to apply answer.`);
+        // Potentially, if state is stable, it might be a re-negotiation or a polite peer scenario.
+        // If it's unexpected, it might indicate a glare issue or out-of-order messages.
+        // For robustness, one might buffer answers if state is not yet 'have-local-offer',
+        // or handle more complex state transitions. For now, we'll log a warning.
+    }
+}
+
+async function handleWebRTCOffer(message) {
+    const { senderUserId, offer } = message;
+    console.log(`Received WebRTC offer from ${senderUserId}:`, offer.sdp.substring(0,30) + "...");
+
+    if (!localAudioStream) {
+        console.warn("Received an offer but local audio stream is not ready. Ignoring offer.");
+        // Optionally, send a message back to senderUserId indicating not ready for call.
+        return;
+    }
+
+    // Ensure a PC exists or create one. If creating, this client is NOT the initiator for this exchange.
+    const pc = peerConnections[senderUserId] || createPeerConnection(senderUserId, false);
+    if (!pc) { // Should not happen if createPeerConnection is robust
+        console.error("Failed to get/create peer connection for offer from", senderUserId);
+        return;
+    }
+
+    try {
+        await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        console.log(`Remote description (offer) set for ${senderUserId}.`);
+
+        const answer = await pc.createAnswer();
+        console.log(`Created answer for ${senderUserId}:`, answer.sdp.substring(0,30) + "...");
+
+        await pc.setLocalDescription(answer);
+        console.log(`Local description (answer) set for ${senderUserId}. Sending answer.`);
+
+        sendMessage({
+            type: 'webrtcAnswer',
+            targetUserId: senderUserId,
+            answer: pc.localDescription // Send the whole localDescription object
+        });
+    } catch (error) {
+        console.error(`Error handling WebRTC offer from ${senderUserId}:`, error);
     }
 }
 
@@ -233,6 +355,64 @@ function handleRegistered(message) {
     }
     // The room list is typically sent right after 'registered' or can be requested.
     // If server sends 'roomList' automatically after 'registered', displayRooms will be called.
+
+    // After registering and getting room list, if user is already in a room (e.g. reconnect)
+    // and has mic enabled, they might need to initiate calls.
+    // However, current flow: join room -> enable mic -> then initiate.
+}
+
+function initiateCallsToExistingRoomMembers() {
+    if (!localAudioStream || !currentRoom) {
+        console.log("Cannot initiate calls: local audio not ready or not in a room.");
+        return;
+    }
+    console.log("Attempting to initiate calls to existing room members...");
+    // Need to get the current list of users in the room.
+    // This info is in `message.users` of `handleJoinedRoom` or can be requested.
+    // For now, let's assume we have a way to get this list.
+    // We'll refine this when `updateUserList` is more fleshed out or if server sends user list separately.
+
+    // A simple way: iterate over the displayed user list elements if they store IDs.
+    const userElements = userListUl.querySelectorAll('li[data-user-id]');
+    userElements.forEach(el => {
+        const peerId = el.dataset.userId;
+        if (peerId !== userId) { // Don't connect to self
+            console.log(`Found user ${peerId} in room, initiating PC (if not exists).`);
+            // The createPeerConnection will handle offer creation if isInitiator is true.
+            // The logic for who is initiator needs to be defined (next step).
+            // For now, let's assume this client initiates to everyone new.
+            // This will be refined in step 4.
+            createPeerConnection(peerId, true); // Tentatively, this client initiates.
+        }
+    });
+}
+
+async function handleWebRTCIceCandidate(message) {
+    const { senderUserId, candidate } = message;
+    // console.log(`Received ICE candidate from ${senderUserId}:`, candidate); // Can be very verbose
+
+    const pc = peerConnections[senderUserId];
+    if (!pc) {
+        console.error(`Received ICE candidate from ${senderUserId}, but no peer connection found.`);
+        return;
+    }
+
+    if (candidate) {
+        try {
+            // Ensure remote description is set before adding ICE candidates if an offer was just processed
+            // or if candidates arrive out of order.
+            if (pc.remoteDescription || pc.signalingState === 'stable') { // 'stable' might mean ready for candidates too
+                 await pc.addIceCandidate(new RTCIceCandidate(candidate));
+                // console.log(`Added ICE candidate from ${senderUserId}`);
+            } else {
+                console.warn(`Received ICE candidate from ${senderUserId} but remote description not yet set. Buffering or ignoring.`);
+                // Simple approach: ignore. Robust: buffer candidates and apply after remoteDescription is set.
+                // For now, we'll rely on typical ordering where offer/answer exchange completes enough for candidates to be added.
+            }
+        } catch (error) {
+            console.error(`Error adding received ICE candidate from ${senderUserId}:`, error);
+        }
+    }
 }
 
 
@@ -242,40 +422,66 @@ chatContainer.style.display = 'none';
 adminControlsDiv.style.display = 'none'; // Ensure admin controls are hidden initially
 
 function handleJoinedRoom(message) {
+    // Close any existing peer connections before joining a new room
+    closeAllPeerConnections();
+
     currentRoom = message.roomName;
     currentRoomNameH2.textContent = `Room: ${currentRoom}`;
     messagesDiv.innerHTML = ''; // Clear messages from previous room
-    updateUserList(message.users);
-    // Enable message input area, etc.
+    updateUserList(message.users); // This will list users, including self if server sends it
+
+    // Enable message input and voice button
     messageInput.disabled = false;
     sendMessageButton.disabled = false;
+    enableVoiceButton.disabled = false;
+    voiceStatusP.textContent = 'Voice chat available. Click "Enable Voice".';
     console.log(`Successfully joined room: ${currentRoom}`);
+
+    // If mic is already enabled, try to connect to existing users
+    if (localAudioStream) {
+        console.log("Mic already enabled, initiating calls to users in newly joined room.");
+        initiateCallsToExistingRoomMembers();
+    }
 }
 
 function handleUserJoined(message) {
     if (message.roomName === currentRoom) {
-        // Add user to list - assumes message.user is {id, username}
-        // For simplicity, just re-fetch or re-render the whole list if not too many users.
-        // Or, more efficiently, add the user to the existing list if not present.
-        const existingUserLi = userListUl.querySelector(`li[data-user-id="${message.user.id}"]`);
+        const newUser = message.user;
+        console.log(`${newUser.username} joined the room.`);
+        // Add user to UI list
+        const existingUserLi = userListUl.querySelector(`li[data-user-id="${newUser.id}"]`);
         if (!existingUserLi) {
             const li = document.createElement('li');
-            li.textContent = message.user.username;
-            li.dataset.userId = message.user.id;
+            li.textContent = newUser.username;
+            li.dataset.userId = newUser.id;
             userListUl.appendChild(li);
         }
-        messagesDiv.innerHTML += `<p><em>${message.user.username} joined the room.</em></p>`;
+        messagesDiv.innerHTML += `<p><em>${newUser.username} joined the room.</em></p>`;
+
+        // If local audio is ready, and this new user is not self, initiate a peer connection
+        if (localAudioStream && newUser.id !== userId) {
+            console.log(`New user ${newUser.username} joined, initiating peer connection.`);
+            // The createPeerConnection will handle offer creation if isInitiator is true.
+            // The logic for who is initiator needs to be defined (next step).
+            // For now, this client (who was already in the room) initiates to the new joiner.
+            // This will be refined in step 4.
+            createPeerConnection(newUser.id, true); // Tentatively, this client initiates.
+        }
     }
 }
 
 function handleUserLeft(message) {
     if (message.roomName === currentRoom) {
-        // Remove user from list
-        const userLi = userListUl.querySelector(`li[data-user-id="${message.user.id}"]`);
+        const departedUser = message.user;
+        console.log(`${departedUser.username} left the room.`);
+        // Remove user from UI list
+        const userLi = userListUl.querySelector(`li[data-user-id="${departedUser.id}"]`);
         if (userLi) {
             userLi.remove();
         }
-        messagesDiv.innerHTML += `<p><em>${message.user.username} left the room.</em></p>`;
+        messagesDiv.innerHTML += `<p><em>${departedUser.username} left the room.</em></p>`;
+        // Close the peer connection for this user
+        closePeerConnection(departedUser.id);
     }
 }
 
@@ -334,5 +540,110 @@ function handleRoomRenamed(message) {
         console.log(`Room ${message.oldName} was renamed to ${message.newName}. UI updated if it was current room.`);
     }
 }
+
+function createPeerConnection(peerId, isInitiator = false) {
+    if (peerConnections[peerId]) {
+        console.log(`Peer connection with ${peerId} already exists or is being established.`);
+        return peerConnections[peerId];
+    }
+    console.log(`Creating new PeerConnection for peer: ${peerId}, initiator: ${isInitiator}`);
+
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    peerConnections[peerId] = pc;
+
+    // Add local audio tracks to the connection
+    if (localAudioStream) {
+        localAudioStream.getTracks().forEach(track => {
+            pc.addTrack(track, localAudioStream);
+            console.log(`Added local audio track to PC for peer ${peerId}`);
+        });
+    } else {
+        console.warn("Local audio stream not available when creating peer connection for", peerId);
+        // This should ideally not happen if UI flow is correct (mic enabled before calls)
+    }
+
+    pc.onicecandidate = (event) => {
+        if (event.candidate) {
+            console.log(`ICE candidate for ${peerId}:`, event.candidate);
+            sendMessage({
+                type: 'webrtcIceCandidate',
+                targetUserId: peerId,
+                candidate: event.candidate
+            });
+        }
+    };
+
+    pc.ontrack = (event) => {
+        console.log(`Remote track received from ${peerId}:`, event.streams[0]);
+        handleRemoteStream(peerId, event.streams[0]);
+    };
+
+    pc.oniceconnectionstatechange = () => {
+        console.log(`ICE connection state for ${peerId}: ${pc.iceConnectionState}`);
+        if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'closed') {
+            // Handle potential cleanup or reconnection logic here
+            console.warn(`Peer connection with ${peerId} ${pc.iceConnectionState}.`);
+            // closePeerConnection(peerId); // Consider when to automatically close
+        }
+    };
+
+    pc.onsignalingstatechange = () => {
+        console.log(`Signaling state for ${peerId}: ${pc.signalingState}`);
+    };
+
+    // If this client is the initiator, it will create and send an offer
+    if (isInitiator) {
+        pc.createOffer()
+            .then(offer => {
+                console.log(`Created offer for ${peerId}:`, offer.sdp.substring(0,30) + "..."); // Log snippet
+                return pc.setLocalDescription(offer);
+            })
+            .then(() => {
+                console.log(`Local description set for ${peerId}. Sending offer.`);
+                sendMessage({
+                    type: 'webrtcOffer',
+                    targetUserId: peerId,
+                    offer: pc.localDescription // Send the whole localDescription object
+                });
+            })
+            .catch(e => console.error(`Error creating offer for ${peerId}:`, e));
+    }
+
+    return pc;
+}
+
+function handleRemoteStream(peerId, stream) {
+    let audioEl = document.getElementById(`audio_${peerId}`);
+    if (!audioEl) {
+        audioEl = document.createElement('audio');
+        audioEl.id = `audio_${peerId}`;
+        audioEl.autoplay = true;
+        // audioEl.controls = true; // Optional: for debugging
+        remoteAudioContainer.appendChild(audioEl);
+        console.log(`Created audio element for peer ${peerId}`);
+    }
+    audioEl.srcObject = stream;
+    audioEl.play().catch(e => console.error("Error playing remote audio:", e));
+}
+
+function closePeerConnection(peerId) {
+    if (peerConnections[peerId]) {
+        peerConnections[peerId].close();
+        delete peerConnections[peerId];
+        const audioEl = document.getElementById(`audio_${peerId}`);
+        if (audioEl) {
+            audioEl.remove();
+        }
+        console.log(`Closed peer connection and cleaned up UI for ${peerId}`);
+    }
+}
+
+function closeAllPeerConnections() {
+    console.log("Closing all peer connections.");
+    for (const peerId in peerConnections) {
+        closePeerConnection(peerId);
+    }
+}
+
 
 console.log('Client-side script fully loaded and initialized.');

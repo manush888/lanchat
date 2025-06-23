@@ -82,6 +82,17 @@ wss.on('connection', (ws) => {
       case 'renameRoom':
         handleRenameRoom(ws, parsedMessage);
         break;
+      // --- WebRTC Signaling Messages (to be relayed by server) ---
+      // Client -> Server -> Client:
+      // { type: 'webrtcOffer', targetUserId: 'peerId', offer: {} }
+      // { type: 'webrtcAnswer', targetUserId: 'peerId', answer: {} }
+      // { type: 'webrtcIceCandidate', targetUserId: 'peerId', candidate: {} }
+      // Server will add 'senderUserId' when relaying.
+      case 'webrtcOffer':
+      case 'webrtcAnswer':
+      case 'webrtcIceCandidate':
+        handleRelayWebRTCMessage(ws, parsedMessage);
+        break;
       default:
         console.log(`Received unhandled message type: ${parsedMessage.type} from client.`);
         ws.send(JSON.stringify({ type: 'error', message: `Unknown message type: ${parsedMessage.type}` }));
@@ -326,6 +337,39 @@ function initializeDefaultRooms() { // Helper in case of load failure
       'Random': { name: 'Random', users: new Map() }
     };
     console.log("Initialized with default rooms.");
+}
+
+function handleRelayWebRTCMessage(ws, message) {
+    const senderClientData = clients.get(ws);
+    if (!senderClientData) {
+        console.error("Cannot relay WebRTC message: sender not found in clients map.");
+        ws.send(JSON.stringify({ type: 'error', message: 'Registration error, cannot send WebRTC signals.'}));
+        return;
+    }
+
+    const targetUserId = message.targetUserId;
+    let targetWs = null;
+
+    // Find the target client's WebSocket connection
+    for (const [clientConnection, clientDataEntry] of clients.entries()) {
+        if (clientDataEntry.id === targetUserId) {
+            targetWs = clientConnection;
+            break;
+        }
+    }
+
+    if (targetWs && targetWs.readyState === WebSocket.OPEN) {
+        // Add senderUserId to the message before relaying
+        const messageToRelay = { ...message, senderUserId: senderClientData.id };
+        delete messageToRelay.targetUserId; // Not needed by the recipient client for this field
+
+        console.log(`Relaying ${message.type} from ${senderClientData.username} (ID: ${senderClientData.id}) to user ID: ${targetUserId}`);
+        targetWs.send(JSON.stringify(messageToRelay));
+    } else {
+        console.warn(`Cannot relay ${message.type} to user ID ${targetUserId}: target not found or connection not open.`);
+        // Optionally, notify the sender that the target is unavailable
+        // ws.send(JSON.stringify({ type: 'error', message: `User ${targetUserId} is not available.` }));
+    }
 }
 
 

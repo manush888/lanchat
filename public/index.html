@@ -53,8 +53,17 @@
                 <!-- Chat messages will appear here -->
             </div>
             <div id="message-input-area">
-                <input type="text" id="messageInput" placeholder="Type your message...">
-                <button id="sendMessageButton">Send</button>
+                <input type="text" id="messageInput" placeholder="Type your message..." disabled>
+                <button id="sendMessageButton" disabled>Send</button>
+            </div>
+            <div id="voice-controls-area" style="margin-top: 15px;">
+                <button id="enableVoiceButton" disabled>Enable Voice</button>
+                <p id="voice-status"></p>
+                <!-- Optional: for local playback test -->
+                <!-- <audio id="localAudioPlayback" autoplay muted controls title="Local Mic Test"></audio> -->
+                <div id="remoteAudioContainer">
+                    <!-- Remote audio elements will be added here -->
+                </div>
             </div>
         </div>
     </div>

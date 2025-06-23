@@ -71,7 +71,21 @@ Initial project structure has been set up. The next step is to implement the bas
     sudo apt-get install libportaudio2
     ```
     For other systems, please refer to the PortAudio website or your system's package manager.
-*   (Later: Opus library)
+*   **Opus Codec Library** (for `opuslib` Python package): The `opuslib` package is a wrapper around the Opus interactive audio codec library. You need to have the Opus library itself installed on your system.
+    *   **Windows:** Download the Opus DLLs from the official Opus website (opus-codec.org) or other trusted sources. Ensure the DLL (e.g., `opus.dll`) is in your system's PATH or in the same directory as your Python executable. Some `opuslib` wheels might bundle the DLL, but manual installation is often more reliable.
+    *   **Linux (Debian/Ubuntu):**
+        ```bash
+        sudo apt-get update
+        sudo apt-get install libopus0
+        ```
+    *   **Linux (Fedora):**
+        ```bash
+        sudo dnf install opus
+        ```
+    *   **macOS (using Homebrew):**
+        ```bash
+        brew install opus
+        ```
 
 ### Running the server (for development)
 

@@ -258,20 +258,18 @@ function getUsersInRoomForClient(roomName) {
 }
 
 function broadcastToRoom(roomName, messageObject, excludeWs = null) {
-  if (rooms[roomName]) {
-    rooms[roomName].users.forEach((wsConnection, userId) => {
-      // The `wsConnection` here is the one stored when user joined the room.
-      // We need to ensure we are getting the correct client object from `clients` map if `excludeWs` is used.
-      // Or, more simply, iterate `clients` map and check if `client.room === roomName`.
-
-      // Simpler approach: iterate all clients, check their room and if they should be excluded.
-      clients.forEach((clientData, clientWs) => {
-        if (clientData.room === roomName && clientWs !== excludeWs && clientWs.readyState === WebSocket.OPEN) {
-          clientWs.send(JSON.stringify(messageObject));
-        }
-      });
-    });
+  if (!rooms[roomName]) {
+    console.warn(`Attempted to broadcast to non-existent or empty room: ${roomName}`);
+    return;
   }
+
+  // Iterate over all connected clients ONCE
+  clients.forEach((clientData, clientWs) => {
+    // Check if this client is in the target room and should not be excluded
+    if (clientData.room === roomName && clientWs !== excludeWs && clientWs.readyState === WebSocket.OPEN) {
+      clientWs.send(JSON.stringify(messageObject));
+    }
+  });
 }
 
 function handleTextMessage(ws, message) {

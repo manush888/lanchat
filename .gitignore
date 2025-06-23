@@ -102,3 +102,7 @@ typings/
 
 # Stores VSCode versions used for testing VSCode extensions
 .vscode-test
+
+# SSL certificates (if self-signed for local dev)
+key.pem
+cert.pem

@@ -46,15 +46,25 @@ Basic project structure with an HTTP server (Express.js) and WebSocket signaling
     ```
     This will install all the necessary packages defined in `package.json` into the `node_modules` directory.
 
-3.  **Run the server:**
+3.  **Generate Self-Signed SSL Certificates (for local development):**
+    Microphone access via `getUserMedia` requires a secure context (HTTPS). For local development, you can generate self-signed certificates. If you have OpenSSL installed, run this command in the project root:
+    ```bash
+    openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -sha256 -days 365 -nodes -subj "/C=XX/ST=State/L=City/O=Organization/OU=OrgUnit/CN=localhost"
+    ```
+    This will create `key.pem` and `cert.pem`. These files are included in `.gitignore` and should not be committed if they are specific to your local setup.
+    *(Note: If OpenSSL is not available, you may need to find an alternative way to generate these files, e.g., using Node.js tools like `selfsigned` or other system utilities.)*
+
+4.  **Run the server:**
     ```bash
     node server.js
     ```
-    By default, the server will start on `http://localhost:3000`. You should see a log message in your console: `Server listening on port 3000` and `WebSocket server created.`.
+    The server will attempt to start using HTTPS on `https://localhost:3000` (or your configured `PORT`). You should see log messages indicating whether HTTPS or HTTP (fallback) server started. For WebRTC voice features, HTTPS is required.
 
-4.  **Access the application:**
-    Open your web browser and navigate to `http://localhost:3000`.
-    You should see the "Welcome to WebChat!" page, and your browser's developer console should show logs related to the WebSocket connection.
+5.  **Access the application:**
+    Open your web browser and navigate to `https://localhost:3000`.
+    *   **Browser Warning:** Since you're using a self-signed certificate, your browser will display a security warning (e.g., "Your connection is not private", "NET::ERR_CERT_AUTHORITY_INVALID"). This is expected.
+    *   **Bypass Warning:** You need to bypass this warning. Look for an "Advanced" button or link, then click "Proceed to localhost (unsafe)" or a similar option.
+    *   Once bypassed, the page should load, and microphone access should now be possible.
 
 ## Development
 

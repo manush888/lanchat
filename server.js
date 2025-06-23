@@ -1,12 +1,26 @@
 const express = require('express');
-const http = require('http');
+const https = require('https'); // Use HTTPS module
+const http = require('http'); // Still needed for potential redirect or if https fails
 const path = require('path');
 const fs = require('fs'); // Require File System module
 const WebSocket = require('ws');
 const { v4: uuidv4 } = require('uuid'); // For generating unique user IDs
 
 const app = express();
-const server = http.createServer(app);
+// const server = http.createServer(app); // Will be replaced by httpsServer
+
+// --- SSL Certificate Setup ---
+let privateKey, certificate;
+try {
+    privateKey = fs.readFileSync('./key.pem', 'utf8');
+    certificate = fs.readFileSync('./cert.pem', 'utf8');
+} catch (e) {
+    console.error("Error reading SSL certificate files. Make sure key.pem and cert.pem are in the root directory.", e);
+    console.log("Falling back to HTTP. Microphone access will likely fail in browser.");
+    // Fallback to HTTP if certs are not found (not ideal for WebRTC)
+}
+const credentials = privateKey && certificate ? { key: privateKey, cert: certificate } : null;
+
 
 // --- In-memory data storage ---
 // rooms: Map roomName -> { name: roomName, users: Map(userId -> ws_connection) }
@@ -35,14 +49,26 @@ app.get('/', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
+let server;
+
+if (credentials) {
+    server = https.createServer(credentials, app);
+    console.log('HTTPS server created.');
+} else {
+    console.log('SSL credentials not found or incomplete. Starting HTTP server instead.');
+    console.warn('WARNING: Microphone access (getUserMedia) will likely NOT work over HTTP in most browsers, except for http://localhost or http://127.0.0.1.');
+    server = http.createServer(app); // Fallback to HTTP
+    console.log('HTTP server created (fallback).');
+}
 
 server.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
+  console.log(`Server listening on ${credentials ? 'https' : 'http'}://localhost:${PORT}`);
 });
 
-// Initialize WebSocket server
-const wss = new WebSocket.Server({ server });
-console.log('WebSocket server initialized and attached to HTTP server.');
+// Initialize WebSocket server and attach it to the chosen server (HTTP or HTTPS)
+const wss = new WebSocket.Server({ server }); // 'server' will be either httpsServer or httpServer
+console.log(`WebSocket server initialized and attached to ${credentials ? 'HTTPS' : 'HTTP'} server.`);
+
 
 wss.on('connection', (ws) => {
   // ws object is the connection to a single client

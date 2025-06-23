@@ -1,102 +1,64 @@
-# LAN Voice Chat for Gamers
+# WebChat - A Node.js Voice Chat Application
 
-This project aims to create a simple, low-latency LAN voice chat application primarily for gamers on Linux.
+This project is a web-based voice chat application built with Node.js, Express, and WebSockets for signaling, aiming for WebRTC integration for audio communication.
 
 ## Current Status
 
-Initial project structure has been set up. The next step is to implement the basic server functionality.
+Basic project structure with an HTTP server (Express.js) and WebSocket signaling server (`ws` library) is implemented. Clients can connect to the server, and basic text messages are exchanged over WebSockets.
 
-## Features (Planned)
+## Features (Planned & In Progress)
 
-*   Server-client architecture
-*   Push-to-Talk (PTT)
-*   High-quality audio using Opus codec
-*   Low latency
-*   Cross-platform (initially Linux, potentially Windows/macOS later)
+*   **Backend:** Node.js with Express.js
+*   **Frontend:** HTML, CSS, Vanilla JavaScript
+*   **Signaling:** WebSockets (`ws` library)
+*   **Audio Communication:** WebRTC (to be implemented)
+*   User authentication (future)
+*   Chat rooms/channels (future)
 
 ## Project Structure
 
-*   `src/`: Contains the core source code.
-    *   `client.py`: Client application logic.
-    *   `server.py`: Server application logic.
-    *   `audio_utils.py`: Utilities for audio processing.
-    *   `constants.py`: Shared constants like network ports and audio settings.
-*   `tests/`: Contains unit and integration tests.
-*   `docs/`: Contains detailed documentation.
-*   `requirements.txt`: Lists Python dependencies.
-*   `.gitignore`: Specifies intentionally untracked files that Git should ignore.
+*   `server.js`: Main Node.js application file (Express server and WebSocket server).
+*   `public/`: Directory for static frontend files.
+    *   `index.html`: Main HTML page for the client.
+    *   `style.css`: Basic CSS for the client.
+    *   `client.js`: Client-side JavaScript for WebSocket communication and UI interaction.
+*   `package.json`: Node.js project manifest, lists dependencies.
+*   `package-lock.json`: Records exact versions of dependencies.
+*   `.gitignore`: Specifies intentionally untracked files by Git (e.g., `node_modules`).
+
+## Prerequisites
+
+*   [Node.js](https://nodejs.org/) (version 14.x or later recommended)
+*   [npm](https://www.npmjs.com/) (usually comes with Node.js)
 
 ## Setup and Usage
 
-1.  **Install dependencies:**
+1.  **Clone the repository (if you haven't already):**
     ```bash
-    pip install -r requirements.txt
+    git clone <repository_url>
+    cd <repository_directory>
     ```
 
-2.  **Run the server:**
-    Open a terminal in the **root directory** of the project. To ensure Python correctly handles the project's package structure, run the server as a module:
+2.  **Install dependencies:**
+    Navigate to the project's root directory in your terminal and run:
     ```bash
-    python -m src.server
+    npm install
     ```
-    The server will print the IP and port it's listening on.
-    *(Note: Running `python src/server.py` directly will result in an `ImportError` due to how Python handles packages.)*
+    This will install all the necessary packages defined in `package.json` into the `node_modules` directory.
 
-3.  **Run the client:**
-    Open another terminal in the **root directory** of the project. Similar to the server, run the client as a module:
+3.  **Run the server:**
     ```bash
-    python -m src.client <server_ip>
+    node server.js
     ```
-    Replace `<server_ip>` with the IP address the server is running on (e.g., `192.168.1.5` or `127.0.0.1` if running on the same machine).
-    *(Note: Running `python src/client.py <server_ip>` directly will also cause import errors.)*
-    You can optionally specify the server's TCP port using the `-p` or `--port` flag if it's different from the default.
+    By default, the server will start on `http://localhost:3000`. You should see a log message in your console: `Server listening on port 3000` and `WebSocket server created.`.
 
-    Example:
-    ```bash
-    python -m src.client 192.168.1.100
-    python -m src.client 127.0.0.1 -p 12345
-    ```
-
-    Press and hold the `Right Ctrl` key to talk (Push-to-Talk).
+4.  **Access the application:**
+    Open your web browser and navigate to `http://localhost:3000`.
+    You should see the "Welcome to WebChat!" page, and your browser's developer console should show logs related to the WebSocket connection.
 
 ## Development
 
-(Information for developers, build instructions, etc.)
+*   **Server-side code:** Modify `server.js` for backend logic, API routes, and WebSocket handling.
+*   **Client-side code:** Modify files in the `public/` directory (`index.html`, `style.css`, `client.js`) for frontend structure, styling, and behavior.
 
-### Prerequisites
-
-*   Python 3.8+
-*   PortAudio (for `sounddevice` library). On Debian/Ubuntu, you can install it with:
-    ```bash
-    sudo apt-get update
-    sudo apt-get install libportaudio2
-    ```
-    For other systems, please refer to the PortAudio website or your system's package manager.
-*   **Opus Codec Library** (for `opuslib` Python package): The `opuslib` package is a wrapper around the Opus interactive audio codec library. You need to have the Opus library itself installed on your system.
-    *   **Windows:** Download the Opus DLLs from the official Opus website (opus-codec.org) or other trusted sources. Ensure the DLL (e.g., `opus.dll`) is in your system's PATH or in the same directory as your Python executable. Some `opuslib` wheels might bundle the DLL, but manual installation is often more reliable.
-    *   **Linux (Debian/Ubuntu):**
-        ```bash
-        sudo apt-get update
-        sudo apt-get install libopus0
-        ```
-    *   **Linux (Fedora):**
-        ```bash
-        sudo dnf install opus
-        ```
-    *   **macOS (using Homebrew):**
-        ```bash
-        brew install opus
-        ```
-
-### Running the server (for development)
-
-From the project root directory:
-```bash
-python -m src.server
-```
-
-### Running the client (for development)
-
-From the project root directory:
-```bash
-python -m src.client <server_ip>
-```
+Remember to restart the Node.js server (`Ctrl+C` then `node server.js`) after making changes to `server.js` to see them take effect. For frontend changes, usually, a browser refresh is sufficient. Tools like `nodemon` can be used for automatic server restarts during development.

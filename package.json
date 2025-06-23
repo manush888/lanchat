@@ -24,6 +24,7 @@
   "homepage": "https://github.com/manush888/lanchat#readme",
   "dependencies": {
     "express": "^5.1.0",
+    "uuid": "^11.1.0",
     "ws": "^8.18.2"
   }
 }

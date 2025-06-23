@@ -7,11 +7,58 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <h1>Welcome to WebChat!</h1>
-    <p>Connecting to WebSocket server...</p>
-    <div id="messages"></div>
+    <div id="connection-area">
+        <h1>Welcome to WebChat!</h1>
+        <div>
+            <label for="username">Username:</label>
+            <input type="text" id="username" name="username" required>
+        </div>
+        <div>
+            <label for="adminToken">Admin Token (Optional):</label>
+            <input type="password" id="adminToken" name="adminToken">
+        </div>
+        <button id="connectButton">Connect</button>
+        <p id="connection-status">Enter username to connect.</p>
+    </div>
 
-    <!-- Client-side WebSocket script will be added here later -->
+    <div id="chat-container" style="display: none;">
+        <div id="room-selection-area">
+            <h2>Available Rooms</h2>
+            <ul id="roomList">
+                <!-- Room list will be populated here by client.js -->
+            </ul>
+            <div id="admin-controls" style="display: none;">
+                <h3>Admin Controls</h3>
+                <input type="text" id="newRoomName" placeholder="New room name">
+                <button id="createRoomButton">Create Room</button>
+                <hr>
+                <input type="text" id="roomToDelete" placeholder="Room name to delete">
+                <button id="deleteRoomButton">Delete Room</button>
+                <hr>
+                <input type="text" id="oldRoomName" placeholder="Current room name">
+                <input type="text" id="renamedRoomName" placeholder="New name for room">
+                <button id="renameRoomButton">Rename Room</button>
+            </div>
+        </div>
+
+        <div id="chat-area">
+            <h2 id="currentRoomName">No room selected</h2>
+            <div id="userListContainer">
+                <h3>Users in room:</h3>
+                <ul id="userList">
+                    <!-- User list for the current room -->
+                </ul>
+            </div>
+            <div id="messages">
+                <!-- Chat messages will appear here -->
+            </div>
+            <div id="message-input-area">
+                <input type="text" id="messageInput" placeholder="Type your message...">
+                <button id="sendMessageButton">Send</button>
+            </div>
+        </div>
+    </div>
+
     <script src="client.js"></script>
 </body>
 </html>

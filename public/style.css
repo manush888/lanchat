@@ -16,4 +16,100 @@ h1 {
     border: 1px solid #ddd;
     background-color: #fff;
     min-height: 100px;
+    overflow-y: auto;
+    flex-grow: 1; /* Allow messages div to take available space */
+}
+
+/* Basic layout for chat container */
+#chat-container {
+    display: flex; /* Will be set to flex by JS after connection */
+    height: calc(100vh - 150px); /* Example height, adjust as needed */
+}
+
+#room-selection-area {
+    width: 25%;
+    padding: 10px;
+    border-right: 1px solid #ccc;
+    overflow-y: auto;
+}
+
+#room-selection-area h2, #room-selection-area h3 {
+    margin-top: 0;
+}
+
+#roomList {
+    list-style-type: none;
+    padding: 0;
+}
+
+#roomList li {
+    padding: 8px;
+    cursor: pointer;
+    border-bottom: 1px solid #eee;
+}
+
+#roomList li:hover {
+    background-color: #e9e9e9;
+}
+
+#admin-controls {
+    margin-top: 20px;
+    padding-top: 10px;
+    border-top: 1px dashed #ccc;
+}
+
+#admin-controls input[type="text"], #admin-controls button {
+    margin-bottom: 10px;
+    width: calc(100% - 16px); /* Account for padding/border */
+    padding: 6px;
+}
+
+
+#chat-area {
+    width: 75%;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+}
+
+#userListContainer {
+    padding-bottom: 10px;
+    border-bottom: 1px solid #ccc;
+    margin-bottom: 10px;
+}
+#userListContainer h3{
+    margin-top:0;
+    margin-bottom: 5px;
+}
+#userList {
+    list-style-type: none;
+    padding: 0;
+    font-size: 0.9em;
+    color: #555;
+}
+
+
+#message-input-area {
+    display: flex;
+    margin-top: 10px;
+}
+
+#messageInput {
+    flex-grow: 1;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px 0 0 4px;
+}
+
+#sendMessageButton {
+    padding: 8px 15px;
+    border: 1px solid #007bff;
+    background-color: #007bff;
+    color: white;
+    cursor: pointer;
+    border-radius: 0 4px 4px 0;
+}
+
+#sendMessageButton:hover {
+    background-color: #0056b3;
 }

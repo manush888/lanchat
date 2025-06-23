@@ -9,7 +9,7 @@ const connectionStatusP = document.getElementById('connection-status');
 
 const chatContainer = document.getElementById('chat-container');
 const roomListUl = document.getElementById('roomList');
-const adminControlsDiv = document.getElementById('admin-controls');
+// const adminControlsDiv = document.getElementById('admin-controls'); // Removed
 
 const currentRoomNameH2 = document.getElementById('currentRoomName');
 const userListUl = document.getElementById('userList');
@@ -22,15 +22,7 @@ const voiceStatusP = document.getElementById('voice-status');
 const localAudioPlayback = document.getElementById('localAudioPlayback'); // Optional
 const remoteAudioContainer = document.getElementById('remoteAudioContainer');
 
-
-// Admin UI elements
-const newRoomNameInput = document.getElementById('newRoomName');
-const createRoomButton = document.getElementById('createRoomButton');
-const roomToDeleteInput = document.getElementById('roomToDelete');
-const deleteRoomButton = document.getElementById('deleteRoomButton');
-const oldRoomNameInput = document.getElementById('oldRoomName');
-const renamedRoomNameInput = document.getElementById('renamedRoomName');
-const renameRoomButton = document.getElementById('renameRoomButton');
+// Old Admin UI elements are removed. Per-room buttons are handled via event delegation.
 
 // --- WebSocket and State ---
 let socket = null;
@@ -74,6 +66,28 @@ messageInput.addEventListener('keypress', (event) => {
     }
 });
 
+roomListUl.addEventListener('click', (event) => {
+    if (!isAdmin) return; // Only admins can use these buttons
+
+    const target = event.target;
+    const roomName = target.dataset.roomname;
+
+    if (!roomName) return; // Click was not on a button with roomname
+
+    if (target.classList.contains('rename-room-btn')) {
+        const newName = prompt(`Enter new name for room "${roomName}":`, roomName);
+        if (newName && newName.trim() !== '' && newName.trim() !== roomName) {
+            sendMessage({ type: 'renameRoom', oldName: roomName, newName: newName.trim() });
+        } else if (newName !== null) { // Not cancelled, but empty or same name
+            alert("New room name must be different and not empty.");
+        }
+    } else if (target.classList.contains('delete-room-btn')) {
+        if (confirm(`Are you sure you want to delete room "${roomName}"?`)) {
+            sendMessage({ type: 'deleteRoom', roomName: roomName });
+        }
+    }
+});
+
 enableVoiceButton.addEventListener('click', async () => {
     if (!isVoiceActive) { // Button is "Enable Voice"
         try {
@@ -112,42 +126,8 @@ enableVoiceButton.addEventListener('click', async () => {
     }
 });
 
-createRoomButton.addEventListener('click', () => {
-    if (!isAdmin) { console.warn("Create room action attempted by non-admin."); return; }
-    const roomName = newRoomNameInput.value.trim();
-    if (roomName) {
-        sendMessage({ type: 'createRoom', roomName: roomName });
-        newRoomNameInput.value = '';
-    } else {
-        alert("New room name cannot be empty.");
-    }
-});
-
-deleteRoomButton.addEventListener('click', () => {
-    if (!isAdmin) { console.warn("Delete room action attempted by non-admin."); return; }
-    const roomName = roomToDeleteInput.value.trim();
-    if (roomName) {
-        if (confirm(`Are you sure you want to delete room: ${roomName}?`)) {
-            sendMessage({ type: 'deleteRoom', roomName: roomName });
-            roomToDeleteInput.value = '';
-        }
-    } else {
-        alert("Room name to delete cannot be empty.");
-    }
-});
-
-renameRoomButton.addEventListener('click', () => {
-    if (!isAdmin) { console.warn("Rename room action attempted by non-admin."); return; }
-    const oldName = oldRoomNameInput.value.trim();
-    const newName = renamedRoomNameInput.value.trim();
-    if (oldName && newName) {
-        sendMessage({ type: 'renameRoom', oldName: oldName, newName: newName });
-        oldRoomNameInput.value = '';
-        renamedRoomNameInput.value = '';
-    } else {
-        alert("Both old and new room names must be provided.");
-    }
-});
+// Old admin button event listeners (createRoomButton, deleteRoomButton, renameRoomButton) are removed.
+// New per-room admin actions are handled by event delegation on roomListUl.
 
 toggleVoiceModeButton.addEventListener('click', () => {
     if (!isVoiceActive || !localAudioStream) {
@@ -265,7 +245,7 @@ function connectWebSocket(username, adminToken) {
         connectionStatusP.textContent = `Disconnected. Code: ${event.code}. Reason: ${event.reason || 'N/A'}`;
         chatContainer.style.display = 'none';
         connectionArea.style.display = 'block';
-        adminControlsDiv.style.display = 'none';
+        // adminControlsDiv.style.display = 'none'; // Old admin controls div logic removed
         socket = null; // Clear the socket object
         closeAllPeerConnections(); // Clean up WebRTC connections for UI consistency
         resetVoiceControlsToDefault(); // Stop mic & reset UI fully on disconnect
@@ -362,13 +342,31 @@ function displayRooms(roomsData) {
         for (const roomKey in roomsData) { // Iterate over keys from server, which are room names
             const room = roomsData[roomKey];
             const li = document.createElement('li');
-            li.textContent = `${room.name} (${room.userCount} users)`;
-            li.dataset.roomName = room.name; // Use the actual name for sending to server
-            li.classList.add('room-item'); // Add a class for styling or easier selection
-            li.addEventListener('click', () => {
+            li.classList.add('room-item');
+
+            const roomNameSpan = document.createElement('span');
+            roomNameSpan.textContent = `${room.name} (${room.userCount} users)`;
+            roomNameSpan.dataset.roomName = room.name; // For joining
+            roomNameSpan.style.cursor = 'pointer'; // Indicate it's clickable for joining
+            roomNameSpan.addEventListener('click', () => {
                 console.log(`Attempting to join room: ${room.name}`);
                 sendMessage({ type: 'joinRoom', roomName: room.name });
             });
+            li.appendChild(roomNameSpan);
+
+            if (isAdmin && room.name !== 'General') {
+                const renameBtn = document.createElement('button');
+                renameBtn.textContent = 'Rename';
+                renameBtn.classList.add('admin-action-button', 'rename-room-btn');
+                renameBtn.dataset.roomname = room.name;
+                li.appendChild(renameBtn);
+
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = 'Delete';
+                deleteBtn.classList.add('admin-action-button', 'delete-room-btn');
+                deleteBtn.dataset.roomname = room.name;
+                li.appendChild(deleteBtn);
+            }
             roomListUl.appendChild(li);
         }
     } else {
@@ -385,12 +383,14 @@ function handleRegistered(message) {
     connectionArea.style.display = 'none'; // Hide connection form
     chatContainer.style.display = 'flex'; // Show main chat interface (flex for layout)
 
-    if (isAdmin) {
-        adminControlsDiv.style.display = 'block'; // Show admin controls
-        console.log('Admin status confirmed by server.');
-    } else {
-        adminControlsDiv.style.display = 'none';
-    }
+    // if (isAdmin) { // Old admin controls div logic removed
+    //     adminControlsDiv.style.display = 'block';
+    //     console.log('Admin status confirmed by server.');
+    // } else {
+    //     adminControlsDiv.style.display = 'none';
+    // }
+    // Per-room admin buttons are now shown/hidden by displayRooms() based on isAdmin state.
+    console.log(`Admin status: ${isAdmin}`);
     // The room list is typically sent right after 'registered' or can be requested.
     // If server sends 'roomList' automatically after 'registered', displayRooms will be called.
 
@@ -486,7 +486,7 @@ function resetVoiceControlsToDefault() {
 // Initial UI state
 connectionArea.style.display = 'block';
 chatContainer.style.display = 'none';
-adminControlsDiv.style.display = 'none'; // Ensure admin controls are hidden initially
+// adminControlsDiv.style.display = 'none'; // Old admin controls div logic removed
 
 function handleJoinedRoom(message) {
     // Close any existing peer connections before joining a new room

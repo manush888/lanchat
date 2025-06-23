@@ -28,7 +28,33 @@ Initial project structure has been set up. The next step is to implement the bas
 
 ## Setup and Usage
 
-(Instructions to be added here once the application is more developed)
+1.  **Install dependencies:**
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+2.  **Run the server:**
+    Open a terminal in the root directory of the project and run:
+    ```bash
+    python -m src.server
+    ```
+    The server will print the IP and port it's listening on.
+
+3.  **Run the client:**
+    Open another terminal in the root directory of the project and run:
+    ```bash
+    python -m src.client <server_ip>
+    ```
+    Replace `<server_ip>` with the IP address the server is running on (e.g., `192.168.1.5` or `127.0.0.1` if running on the same machine).
+    You can optionally specify the server's TCP port using the `-p` or `--port` flag if it's different from the default.
+
+    Example:
+    ```bash
+    python -m src.client 192.168.1.100
+    python -m src.client 127.0.0.1 -p 12345
+    ```
+
+    Press and hold the `Right Ctrl` key to talk (Push-to-Talk).
 
 ## Development
 
@@ -36,17 +62,25 @@ Initial project structure has been set up. The next step is to implement the bas
 
 ### Prerequisites
 
-*   Python 3.x
-*   (Later: PortAudio, Opus library)
+*   Python 3.8+
+*   PortAudio (for `sounddevice` library). On Debian/Ubuntu, you can install it with:
+    ```bash
+    sudo apt-get update
+    sudo apt-get install libportaudio2
+    ```
+    For other systems, please refer to the PortAudio website or your system's package manager.
+*   (Later: Opus library)
 
-### Running the server (Future)
+### Running the server (for development)
 
+From the project root directory:
 ```bash
-python src/server.py
+python -m src.server
 ```
 
-### Running the client (Future)
+### Running the client (for development)
 
+From the project root directory:
 ```bash
-python src/client.py <server_ip>
+python -m src.client <server_ip>
 ```

@@ -1,0 +1,30 @@
+{
+  "name": "app",
+  "version": "1.0.0",
+  "description": "This project aims to create a simple, low-latency LAN voice chat application primarily for gamers on Linux.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/manush888/lanchat.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/manush888/lanchat/issues"
+  },
+  "homepage": "https://github.com/manush888/lanchat#readme",
+  "dependencies": {
+    "express": "^5.1.0",
+    "uuid": "^11.1.0",
+    "ws": "^8.18.2"
+  }
+}

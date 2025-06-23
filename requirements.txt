@@ -1,0 +1,8 @@
+# Core libraries for audio and PTT
+sounddevice>=0.4.6
+opuslib>=3.0.1
+keyboard>=0.13.5
+numpy>=1.26.0
+# Specify versions based on successful installation or project needs.
+# Using '>=value' allows for updates to patch/minor versions.
+# Check exact installed versions with `pip freeze` if necessary for stricter pinning.

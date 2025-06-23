@@ -17,6 +17,7 @@ const messagesDiv = document.getElementById('messages');
 const messageInput = document.getElementById('messageInput');
 const sendMessageButton = document.getElementById('sendMessageButton');
 const enableVoiceButton = document.getElementById('enableVoiceButton');
+const toggleVoiceModeButton = document.getElementById('toggleVoiceModeButton');
 const voiceStatusP = document.getElementById('voice-status');
 const localAudioPlayback = document.getElementById('localAudioPlayback'); // Optional
 const remoteAudioContainer = document.getElementById('remoteAudioContainer');
@@ -39,8 +40,10 @@ let isAdmin = false;
 let currentRoom = null;
 let localAudioStream = null;
 let peerConnections = {}; // Map peerId to RTCPeerConnection object
-let isMicMuted = true; // With PTT, this means mic is not actively sending unless PTT key is pressed.
-let isPttActive = false; // Tracks if PTT key is currently held down
+let isVoiceActive = false; // True if getUserMedia successful and voice features are generally on
+let currentMicMode = 'ptt'; // 'ptt' or 'open'
+let isPttKeyDown = false; // Tracks if PTT key is currently held down
+// Removed old isMicMuted variable
 
 const PTT_KEY = 'Space'; // Using 'Space' (event.code) or ' ' (event.key)
 // const PTT_KEY_CODE = 'Space'; // More specific for event.code
@@ -72,39 +75,40 @@ messageInput.addEventListener('keypress', (event) => {
 });
 
 enableVoiceButton.addEventListener('click', async () => {
-    if (!localAudioStream) { // First click: Enable voice
+    if (!isVoiceActive) { // Button is "Enable Voice"
         try {
             voiceStatusP.textContent = 'Requesting microphone access...';
             localAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
 
-            isMicMuted = true; // With PTT, mic is initially muted after enabling.
-            localAudioStream.getTracks().forEach(track => track.enabled = false); // Ensure tracks start disabled for PTT
+            isVoiceActive = true;
+            currentMicMode = 'ptt'; // Default to PTT
+            localAudioStream.getTracks().forEach(track => track.enabled = false); // PTT default: muted
 
-            // Update UI for PTT mode
-            // For now, let's assume 'Space' is the PTT key. This should be configurable or clearly indicated.
-            voiceStatusP.textContent = 'Mic Muted (Hold SPACE to Talk)';
-            enableVoiceButton.textContent = 'Voice Enabled (PTT)'; // Indicate PTT is active
-            enableVoiceButton.disabled = true; // Disable button, PTT keys will control mic now.
-                                               // Or, change it to a "Disable Voice" button. For now, just disable.
+            enableVoiceButton.textContent = 'Disable Voice';
+            enableVoiceButton.disabled = false; // It's now the disable button
 
-            console.log("Local audio stream obtained (PTT Mode):", localAudioStream);
-            addPttListeners(); // Add PTT listeners now that mic is ready for PTT
+            toggleVoiceModeButton.textContent = 'Use Open Mic';
+            toggleVoiceModeButton.style.display = 'inline-block';
+            toggleVoiceModeButton.disabled = false;
+
+            voiceStatusP.textContent = `PTT Active: Hold ${PTT_KEY} to Talk`;
+
+            console.log("Local audio stream obtained. PTT Mode active by default.", localAudioStream);
+            addPttListeners();
             initiateCallsToExistingRoomMembers();
         } catch (error) {
             console.error('Error accessing microphone:', error);
-            voiceStatusP.textContent = `Error accessing microphone: ${error.name} - ${error.message}`;
-            enableVoiceButton.disabled = false;
-            enableVoiceButton.textContent = 'Enable Voice';
-            localAudioStream = null; // Ensure stream is null on error
-            isMicMuted = true; // Reset mute state
+            voiceStatusP.textContent = `Error: ${error.name} - ${error.message}. Ensure mic is allowed and page is HTTPS.`;
+            localAudioStream = null;
+            isVoiceActive = false;
+            enableVoiceButton.textContent = 'Enable Voice'; // Reset button
+            toggleVoiceModeButton.style.display = 'none'; // Hide toggle button
         }
-    } else {
-        // If button is clicked after voice is enabled, and it's not a "Disable Voice" button yet,
-        // it means PTT is active. We could make this button a "Disable Voice" toggle.
-        // For now, if localAudioStream exists, this button is disabled in PTT mode.
-        // Or, if we keep it as a mute/unmute toggle, it would conflict with PTT.
-        // Let's stick to PTT taking precedence once stream is acquired.
-        console.log("Voice already enabled (PTT mode). Use PTT keys.");
+    } else { // Button is "Disable Voice"
+        // Call completelyDisableVoice() - This function will be created in the next step.
+        // For now, let's log it.
+        // console.log("Disable Voice button clicked. Will call completelyDisableVoice().");
+        completelyDisableVoice();
     }
 });
 
@@ -142,6 +146,31 @@ renameRoomButton.addEventListener('click', () => {
         renamedRoomNameInput.value = '';
     } else {
         alert("Both old and new room names must be provided.");
+    }
+});
+
+toggleVoiceModeButton.addEventListener('click', () => {
+    if (!isVoiceActive || !localAudioStream) {
+        console.warn("toggleVoiceModeButton clicked but voice is not active or stream not available.");
+        return;
+    }
+
+    if (currentMicMode === 'ptt') {
+        // Switching to Open Mic
+        currentMicMode = 'open';
+        localAudioStream.getTracks().forEach(track => track.enabled = true); // Enable tracks for open mic
+        toggleVoiceModeButton.textContent = 'Use PTT Mode';
+        voiceStatusP.textContent = 'Open Mic: Transmitting';
+        isPttKeyDown = false; // Ensure PTT key state is reset
+        console.log("Switched to Open Mic mode.");
+        // PTT listeners remain, but PTT handlers will check currentMicMode
+    } else { // currentMicMode === 'open'
+        // Switching back to PTT
+        currentMicMode = 'ptt';
+        localAudioStream.getTracks().forEach(track => track.enabled = false); // Disable tracks for PTT default
+        toggleVoiceModeButton.textContent = 'Use Open Mic';
+        voiceStatusP.textContent = `PTT Active: Hold ${PTT_KEY} to Talk`;
+        console.log("Switched to PTT mode.");
     }
 });
 
@@ -424,6 +453,35 @@ async function handleWebRTCIceCandidate(message) {
     }
 }
 
+function completelyDisableVoice() {
+    console.log("Disabling all voice features.");
+    isVoiceActive = false;
+    if (localAudioStream) {
+        localAudioStream.getTracks().forEach(track => track.stop()); // Stop the tracks to release mic
+        localAudioStream = null;
+    }
+    removePttListeners();
+
+    toggleVoiceModeButton.style.display = 'none';
+    // toggleVoiceModeButton.textContent = 'Use Open Mic'; // Reset text for next time
+
+    enableVoiceButton.textContent = 'Enable Voice';
+    // enableVoiceButton.disabled is handled by calling context (e.g. resetVoiceControlsToDefault will disable it)
+
+    voiceStatusP.textContent = 'Voice disabled.';
+    currentMicMode = 'ptt'; // Reset to default mode
+    isPttKeyDown = false;
+
+    closeAllPeerConnections();
+}
+
+// resetVoiceControlsToDefault is called on socket.onclose
+function resetVoiceControlsToDefault() {
+    completelyDisableVoice(); // This stops streams, resets states, hides toggle button etc.
+    enableVoiceButton.disabled = true; // After full disable, button is disabled as user is not in a room.
+    voiceStatusP.textContent = 'Disconnected. Voice disabled.'; // More specific status for full disconnect
+}
+
 
 // Initial UI state
 connectionArea.style.display = 'block';
@@ -676,15 +734,17 @@ function resetVoiceControlsToDefault() {
     enableVoiceButton.textContent = 'Enable Voice';
     enableVoiceButton.disabled = true; // Disabled until in a room
     voiceStatusP.textContent = '';
-    isMicMuted = true;
-    removePttListeners(); // Remove PTT listeners when voice is fully reset
+    // isMicMuted = true; // Removed
+    isVoiceActive = false; // Ensure this is reset
+    currentMicMode = 'ptt'; // Reset to default mode
+    isPttKeyDown = false; // Reset PTT key state
+    removePttListeners();
 }
 
 // --- PTT Key Handlers ---
 function handlePttKeyDown(event) {
-    if (event.code === PTT_KEY && localAudioStream && !isPttActive) {
-        isPttActive = true;
-        isMicMuted = false; // Logically, mic is now unmuted by PTT
+    if (isVoiceActive && currentMicMode === 'ptt' && event.code === PTT_KEY && localAudioStream && !isPttKeyDown) {
+        isPttKeyDown = true;
         localAudioStream.getTracks().forEach(track => track.enabled = true);
         voiceStatusP.textContent = 'TALKING...';
         // console.log("PTT Key Down - Mic Enabled");
@@ -692,11 +752,10 @@ function handlePttKeyDown(event) {
 }
 
 function handlePttKeyUp(event) {
-    if (event.code === PTT_KEY && localAudioStream && isPttActive) {
-        isPttActive = false;
-        isMicMuted = true; // Logically, mic is now muted by PTT release
+    if (isVoiceActive && currentMicMode === 'ptt' && event.code === PTT_KEY && localAudioStream && isPttKeyDown) {
+        isPttKeyDown = false;
         localAudioStream.getTracks().forEach(track => track.enabled = false);
-        voiceStatusP.textContent = 'Mic Muted (Hold SPACE to Talk)';
+        voiceStatusP.textContent = `PTT Active: Hold ${PTT_KEY} to Talk`;
         // console.log("PTT Key Up - Mic Disabled");
     }
 }

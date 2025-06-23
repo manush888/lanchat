@@ -17,10 +17,14 @@ const messagesDiv = document.getElementById('messages');
 const messageInput = document.getElementById('messageInput');
 const sendMessageButton = document.getElementById('sendMessageButton');
 
-// Admin UI elements (to be handled later)
+// Admin UI elements
 const newRoomNameInput = document.getElementById('newRoomName');
 const createRoomButton = document.getElementById('createRoomButton');
-// ... other admin buttons ...
+const roomToDeleteInput = document.getElementById('roomToDelete');
+const deleteRoomButton = document.getElementById('deleteRoomButton');
+const oldRoomNameInput = document.getElementById('oldRoomName');
+const renamedRoomNameInput = document.getElementById('renamedRoomName');
+const renameRoomButton = document.getElementById('renameRoomButton');
 
 // --- WebSocket and State ---
 let socket = null;
@@ -49,7 +53,43 @@ messageInput.addEventListener('keypress', (event) => {
     }
 });
 
-// Add event listeners for room joining, admin actions later (some room joining already handled in displayRooms)
+createRoomButton.addEventListener('click', () => {
+    if (!isAdmin) { console.warn("Create room action attempted by non-admin."); return; }
+    const roomName = newRoomNameInput.value.trim();
+    if (roomName) {
+        sendMessage({ type: 'createRoom', roomName: roomName });
+        newRoomNameInput.value = '';
+    } else {
+        alert("New room name cannot be empty.");
+    }
+});
+
+deleteRoomButton.addEventListener('click', () => {
+    if (!isAdmin) { console.warn("Delete room action attempted by non-admin."); return; }
+    const roomName = roomToDeleteInput.value.trim();
+    if (roomName) {
+        if (confirm(`Are you sure you want to delete room: ${roomName}?`)) {
+            sendMessage({ type: 'deleteRoom', roomName: roomName });
+            roomToDeleteInput.value = '';
+        }
+    } else {
+        alert("Room name to delete cannot be empty.");
+    }
+});
+
+renameRoomButton.addEventListener('click', () => {
+    if (!isAdmin) { console.warn("Rename room action attempted by non-admin."); return; }
+    const oldName = oldRoomNameInput.value.trim();
+    const newName = renamedRoomNameInput.value.trim();
+    if (oldName && newName) {
+        sendMessage({ type: 'renameRoom', oldName: oldName, newName: newName });
+        oldRoomNameInput.value = '';
+        renamedRoomNameInput.value = '';
+    } else {
+        alert("Both old and new room names must be provided.");
+    }
+});
+
 
 // --- WebSocket Functions ---
 function connectWebSocket(username, adminToken) {
@@ -119,7 +159,9 @@ function connectWebSocket(username, adminToken) {
             case 'newTextMessage':
                 displayNewTextMessage(msg);
                 break;
-            // Admin actions will be handled in next steps
+            case 'roomRenamed':
+                handleRoomRenamed(msg);
+                break;
             default:
                 console.log('Received unhandled message type:', msg.type);
         }
@@ -272,6 +314,25 @@ function displayNewTextMessage(message) {
     p.innerHTML = `<strong>${message.username}:</strong> ${message.content}`; // Use innerHTML if you might include HTML tags from user, otherwise textContent and create nodes manually for safety.
     messagesDiv.appendChild(p);
     messagesDiv.scrollTop = messagesDiv.scrollHeight; // Scroll to bottom
+}
+
+function handleRoomRenamed(message) {
+    // The server should have already updated the global room list via 'roomList' broadcast.
+    // This handler is mostly for updating the current client's view if they are in the renamed room.
+    if (currentRoom === message.oldName) {
+        currentRoom = message.newName;
+        currentRoomNameH2.textContent = `Room: ${currentRoom}`;
+        messagesDiv.innerHTML += `<p><em>${message.message}</em></p>`;
+    }
+    // Potentially, also update the room name in the displayed list if it's not fully re-rendered by 'roomList'
+    const roomLi = roomListUl.querySelector(`li[data-room-name="${message.oldName}"]`);
+    if (roomLi) {
+        roomLi.dataset.roomName = message.newName;
+        // Re-extract user count or assume roomList message will refresh it.
+        // For simplicity, let's assume roomList will handle the full text update.
+        // If not, you'd update textContent here too.
+        console.log(`Room ${message.oldName} was renamed to ${message.newName}. UI updated if it was current room.`);
+    }
 }
 
 console.log('Client-side script fully loaded and initialized.');

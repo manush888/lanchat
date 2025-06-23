@@ -1,6 +1,7 @@
 const express = require('express');
 const http = require('http');
 const path = require('path');
+const fs = require('fs'); // Require File System module
 const WebSocket = require('ws');
 const { v4: uuidv4 } = require('uuid'); // For generating unique user IDs
 
@@ -20,9 +21,13 @@ let rooms = {
 let clients = new Map();
 
 const ADMIN_SECRET = "supersecret"; // In a real app, use environment variables for secrets.
+const ROOMS_FILE_PATH = './rooms-data.json';
 
 // Serve static files from the 'public' directory
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Load rooms from file on startup
+loadRoomsFromFile(); // Call before server starts listening
 
 // Basic route for the homepage
 app.get('/', (req, res) => {
@@ -68,7 +73,15 @@ wss.on('connection', (ws) => {
       case 'textMessage':
         handleTextMessage(ws, parsedMessage);
         break;
-      // Admin actions to be implemented: createRoom, deleteRoom, renameRoom
+      case 'createRoom':
+        handleCreateRoom(ws, parsedMessage);
+        break;
+      case 'deleteRoom':
+        handleDeleteRoom(ws, parsedMessage);
+        break;
+      case 'renameRoom':
+        handleRenameRoom(ws, parsedMessage);
+        break;
       default:
         console.log(`Received unhandled message type: ${parsedMessage.type} from client.`);
         ws.send(JSON.stringify({ type: 'error', message: `Unknown message type: ${parsedMessage.type}` }));
@@ -140,6 +153,179 @@ function broadcastRoomList() {
             clientObj.ws.send(JSON.stringify({ type: 'roomList', rooms: roomData }));
         }
     });
+}
+
+// --- Admin Action Handlers ---
+function handleCreateRoom(ws, message) {
+    const clientData = clients.get(ws);
+    if (!clientData || !clientData.isAdmin) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Unauthorized: Admin privileges required.' }));
+        return;
+    }
+    const { roomName } = message;
+    if (!roomName || roomName.trim().length === 0) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Room name cannot be empty.' }));
+        return;
+    }
+    if (rooms[roomName]) {
+        ws.send(JSON.stringify({ type: 'error', message: `Room '${roomName}' already exists.` }));
+        return;
+    }
+    rooms[roomName] = { name: roomName, users: new Map() };
+    console.log(`Admin ${clientData.username} created room: ${roomName}`);
+    saveRoomsToFile(); // Save after successful creation
+    broadcastRoomList();
+    ws.send(JSON.stringify({ type: 'info', message: `Room '${roomName}' created successfully.` }));
+}
+
+function handleDeleteRoom(ws, message) {
+    const clientData = clients.get(ws);
+    if (!clientData || !clientData.isAdmin) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Unauthorized: Admin privileges required.' }));
+        return;
+    }
+    const { roomName } = message;
+    if (!roomName || !rooms[roomName]) {
+        ws.send(JSON.stringify({ type: 'error', message: `Room '${roomName}' not found.` }));
+        return;
+    }
+    if (roomName === 'General') { // Prevent deleting the default 'General' room
+        ws.send(JSON.stringify({ type: 'error', message: "Cannot delete the default 'General' room." }));
+        return;
+    }
+
+    // Move users from the deleted room to 'General'
+    const usersToMove = Array.from(rooms[roomName].users.keys()); // Get user IDs
+    usersToMove.forEach(userId => {
+        // Find the ws connection for each userId to update their clientData and send messages
+        for (const [conn, cData] of clients) {
+            if (cData.id === userId) {
+                cData.room = 'General'; // Update client's current room
+                rooms['General'].users.set(userId, conn); // Add to General room's user map
+                conn.send(JSON.stringify({
+                    type: 'info',
+                    message: `Room '${roomName}' was deleted. You have been moved to 'General'.`
+                }));
+                // Force client to "re-join" General to get updated user list for General
+                conn.send(JSON.stringify({
+                    type: 'joinedRoom',
+                    roomName: 'General',
+                    users: getUsersInRoomForClient('General')
+                }));
+                break;
+            }
+        }
+    });
+
+    delete rooms[roomName];
+    console.log(`Admin ${clientData.username} deleted room: ${roomName}. Users moved to General.`);
+    saveRoomsToFile(); // Save after successful deletion
+    broadcastRoomList();
+    ws.send(JSON.stringify({ type: 'info', message: `Room '${roomName}' deleted. Users (if any) moved to 'General'.` }));
+}
+
+function handleRenameRoom(ws, message) {
+    const clientData = clients.get(ws);
+    if (!clientData || !clientData.isAdmin) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Unauthorized: Admin privileges required.' }));
+        return;
+    }
+    const { oldName, newName } = message;
+    if (!oldName || !newName || oldName.trim().length === 0 || newName.trim().length === 0) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Both old and new room names must be provided.' }));
+        return;
+    }
+    if (!rooms[oldName]) {
+        ws.send(JSON.stringify({ type: 'error', message: `Room '${oldName}' not found.` }));
+        return;
+    }
+    if (rooms[newName]) {
+        ws.send(JSON.stringify({ type: 'error', message: `Room name '${newName}' already exists.` }));
+        return;
+    }
+    if (oldName === 'General' && newName !== 'General') { // Prevent renaming the default 'General' room away
+        ws.send(JSON.stringify({ type: 'error', message: "Cannot rename the default 'General' room to something else."}));
+        return;
+    }
+
+    // Update room name and transfer users
+    rooms[newName] = rooms[oldName]; // Copy users map and original name property
+    rooms[newName].name = newName;   // Update the name property
+    delete rooms[oldName];
+
+    // Update room name for all clients currently in that room
+    clients.forEach(cData => {
+        if (cData.room === oldName) {
+            cData.room = newName;
+        }
+    });
+
+    // Notify users in the renamed room
+    broadcastToRoom(newName, {
+        type: 'roomRenamed',
+        oldName: oldName,
+        newName: newName,
+        message: `Room '${oldName}' has been renamed to '${newName}'. Your current room has been updated.`
+    });
+
+    console.log(`Admin ${clientData.username} renamed room '${oldName}' to '${newName}'.`);
+    saveRoomsToFile(); // Save after successful rename
+    broadcastRoomList(); // Update everyone with the new list of rooms
+    ws.send(JSON.stringify({ type: 'info', message: `Room '${oldName}' successfully renamed to '${newName}'.` }));
+}
+
+// --- Persistence Functions ---
+function loadRoomsFromFile() {
+    try {
+        if (fs.existsSync(ROOMS_FILE_PATH)) {
+            const data = fs.readFileSync(ROOMS_FILE_PATH, 'utf8');
+            const loadedRoomsConfig = JSON.parse(data);
+            // Reconstruct rooms with empty user maps
+            const tempRooms = {};
+            for (const roomName in loadedRoomsConfig) {
+                tempRooms[roomName] = {
+                    name: loadedRoomsConfig[roomName].name, // Ensure name property is consistent
+                    users: new Map() // Users are transient, always start empty
+                };
+            }
+            rooms = tempRooms; // Assign to the global rooms variable
+            console.log('Rooms loaded from file:', ROOMS_FILE_PATH);
+        } else {
+            console.log('No rooms data file found. Using default rooms.');
+            // Default rooms are already initialized, so do nothing more here.
+            // Optionally, save default rooms immediately: saveRoomsToFile();
+        }
+    } catch (error) {
+        console.error('Error loading rooms from file:', error);
+        // Fallback to default rooms if loading fails
+        initializeDefaultRooms(); // Make sure this function exists or rooms is already default
+    }
+}
+
+function saveRoomsToFile() {
+    try {
+        // Prepare a version of rooms for saving (without live user WebSocket connections)
+        const roomsToSave = {};
+        for (const roomName in rooms) {
+            roomsToSave[roomName] = {
+                name: rooms[roomName].name // Just save the name (and any other persistent config)
+                // Do NOT save rooms[roomName].users as it contains live WebSocket objects
+            };
+        }
+        fs.writeFileSync(ROOMS_FILE_PATH, JSON.stringify(roomsToSave, null, 2), 'utf8');
+        console.log('Rooms data saved to file:', ROOMS_FILE_PATH);
+    } catch (error) {
+        console.error('Error saving rooms to file:', error);
+    }
+}
+
+function initializeDefaultRooms() { // Helper in case of load failure
+    rooms = {
+      'General': { name: 'General', users: new Map() },
+      'Tech Talk': { name: 'Tech Talk', users: new Map() },
+      'Random': { name: 'Random', users: new Map() }
+    };
+    console.log("Initialized with default rooms.");
 }
 
 
